@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4F46E5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>MemoryNote - Catatan Meeting Otomatis</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #F8FAFC;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 10px;
+        }
+
+        /* Pulse Animation for Recording */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.8; }
+            80%, 100% { transform: scale(1.6); opacity: 0; }
+        }
+        .recording-pulse::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: #EF4444;
+            border-radius: 50%;
+            z-index: -1;
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        /* Audio Wave Bars */
+        .wave-bar {
+            width: 4px;
+            background-color: #4F46E5;
+            border-radius: 4px;
+            transition: height 0.1s ease;
+        }
+    </style>
+</head>
+<body class="text-slate-800 flex justify-center min-h-screen bg-slate-200">
+
+    <!-- Mobile App Container -->
+    <div class="w-full max-w-md bg-slate-50 min-h-screen shadow-2xl relative flex flex-col overflow-hidden">
+        
+        <!-- Header / App Bar -->
+        <header class="bg-indigo-600 text-white px-5 pt-6 pb-5 rounded-b-3xl shadow-md z-10">
+            <div class="flex justify-between items-center mb-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+                        <i data-lucide="mic" class="w-6 h-6 text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight">MemoryNote</h1>
+                        <p class="text-xs text-indigo-200">Asisten Catatan Meeting AI</p>
+                    </div>
+                </div>
+                <button onclick="toggleInfoModal()" class="p-2 bg-white/10 hover:bg-white/20 rounded-full transition">
+                    <i data-lucide="info" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Search Bar -->
+            <div class="relative mt-2">
+                <i data-lucide="search" class="w-4 h-4 text-indigo-300 absolute left-3.5 top-3"></i>
+                <input type="text" id="searchInput" onkeyup="filterNotes()" placeholder="Cari catatan meeting..." 
+                    class="w-full bg-indigo-700/60 text-white placeholder-indigo-300 text-sm rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-white/50 transition">
+            </div>
+        </header>
+
+        <!-- Main Content: Notes List -->
+        <main id="notesListView" class="flex-1 overflow-y-auto p-5 pb-28 space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider">Riwayat Meeting</h2>
+                <span id="noteCount" class="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-0.5 rounded-full">0 Catatan</span>
+            </div>
+
+            <!-- Container for Notes -->
+            <div id="notesContainer" class="space-y-3">
+                <!-- Notes will be injected here via JS -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden flex flex-col items-center justify-center text-center py-16 px-4">
+                <div class="bg-indigo-50 p-4 rounded-full mb-4 text-indigo-500">
+                    <i data-lucide="file-audio" class="w-10 h-10"></i>
+                </div>
+                <h3 class="text-base font-bold text-slate-700">Belum Ada Catatan Meeting</h3>
+                <p class="text-xs text-slate-500 mt-1 max-w-xs">Tekan tombol mikrofon di bawah untuk mulai merekam suara dan mengubahnya menjadi teks secara otomatis.</p>
+            </div>
+        </main>
+
+        <!-- Active Recording View (Overlay) -->
+        <div id="recordingView" class="hidden absolute inset-0 bg-white z-30 flex flex-col justify-between p-6">
+            <!-- Top Bar -->
+            <div class="flex justify-between items-center">
+                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 bg-red-50 px-3 py-1.5 rounded-full">
+                    <span class="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
+                    MEREKAM SUARA
+                </span>
+                <span id="timerDisplay" class="font-mono text-sm font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg">00:00</span>
+            </div>
+
+            <!-- Meeting Title Input -->
+            <div class="mt-4">
+                <input type="text" id="meetingTitleInput" placeholder="Judul Meeting (cth: Rapat Mingguan Tim)" 
+                    class="w-full text-lg font-bold text-slate-800 border-b-2 border-slate-200 focus:border-indigo-600 pb-2 focus:outline-none bg-transparent">
+            </div>
+
+            <!-- Live Transcript Box -->
+            <div class="flex-1 my-4 bg-slate-50 rounded-2xl p-4 border border-slate-200 overflow-y-auto relative">
+                <p id="liveTranscriptText" class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap"></p>
+                <p id="interimTranscriptText" class="text-sm text-indigo-500 italic mt-1"></p>
+                
+                <div id="micPlaceholder" class="h-full flex flex-col items-center justify-center text-slate-400 text-center px-2">
+                    <i data-lucide="volume-2" class="w-8 h-8 mb-2 opacity-50"></i>
+                    <p id="micStatusText" class="text-xs">Silakan mulai berbicara...<br>Suara Anda akan otomatis diketik di sini.</p>
+                    <button id="retryMicBtn" onclick="startRecording()" class="hidden mt-4 bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold px-4 py-2 rounded-xl transition">
+                        Coba Aktifkan Mikrofon Lagi
+                    </button>
+                    <button id="simulateBtn" onclick="startSimulationMode()" class="hidden mt-2 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-xs font-semibold px-4 py-2 rounded-xl transition">
+                        Coba Mode Simulasi Suara
+                    </button>
+                </div>
+            </div>
+
+            <!-- Visualizer & Controls -->
+            <div class="flex flex-col items-center">
+                <!-- Simple Audio Bars -->
+                <div id="visualizer" class="flex items-center justify-center gap-1.5 h-10 mb-6">
+                    <div class="wave-bar h-3"></div>
+                    <div class="wave-bar h-6"></div>
+                    <div class="wave-bar h-4"></div>
+                    <div class="wave-bar h-8"></div>
+                    <div class="wave-bar h-5"></div>
+                    <div class="wave-bar h-7"></div>
+                    <div class="wave-bar h-3"></div>
+                </div>
+
+                <div class="flex items-center justify-center gap-6 w-full">
+                    <!-- Cancel Button -->
+                    <button onclick="cancelRecording()" class="p-4 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition" title="Batal">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+
+                    <!-- Stop & Save Button -->
+                    <button onclick="stopAndSaveRecording()" class="relative recording-pulse w-16 h-16 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg hover:bg-red-700 transition" title="Selesai & Simpan">
+                        <i data-lucide="square" class="w-6 h-6 fill-current"></i>
+                    </button>
+
+                    <!-- Pause/Resume Button -->
+                    <button id="pauseBtn" onclick="togglePauseRecording()" class="p-4 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition" title="Jeda">
+                        <i data-lucide="pause" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                <p class="text-xs text-slate-400 mt-3">Tekan kotak merah untuk berhenti & menyimpan</p>
+            </div>
+        </div>
+
+        <!-- Note Detail View (Overlay) -->
+        <div id="detailView" class="hidden absolute inset-0 bg-white z-30 flex flex-col">
+            <!-- Detail Header -->
+            <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white">
+                <button onclick="closeDetailView()" class="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-full">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </button>
+                <div class="flex gap-2">
+                    <button onclick="copyNoteContent()" class="p-2 text-slate-600 hover:bg-slate-100 rounded-full" title="Salin Teks">
+                        <i data-lucide="copy" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="shareNote()" class="p-2 text-slate-600 hover:bg-slate-100 rounded-full" title="Bagikan">
+                        <i data-lucide="share-2" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="deleteCurrentNote()" class="p-2 text-red-500 hover:bg-red-50 rounded-full" title="Hapus">
+                        <i data-lucide="trash-2" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Detail Content -->
+            <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                <div>
+                    <h2 id="detailTitle" class="text-xl font-bold text-slate-800">Judul Meeting</h2>
+                    <div class="flex items-center gap-3 text-xs text-slate-400 mt-1.5">
+                        <span id="detailDate" class="flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> 26 Nov 2026</span>
+                        <span id="detailDuration" class="flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5"></i> 05:20</span>
+                    </div>
+                </div>
+
+                <!-- Auto Summary Card -->
+                <div class="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-4">
+                    <div class="flex items-center gap-2 text-indigo-700 font-semibold text-xs uppercase tracking-wider mb-2">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        Poin Penting (Auto-Summary)
+                    </div>
+                    <ul id="detailSummary" class="text-xs text-slate-700 space-y-1.5 list-disc pl-4">
+                        <!-- Summary bullets -->
+                    </ul>
+                </div>
+
+                <!-- Full Transcript -->
+                <div>
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Transkrip Lengkap</h3>
+                    <div id="detailContent" class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating Action Button (Start Recording) -->
+        <div class="absolute bottom-6 left-0 right-0 flex justify-center z-20 pointer-events-none">
+            <button onclick="startRecording()" class="pointer-events-auto flex items-center gap-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold px-6 py-4 rounded-full shadow-xl shadow-indigo-600/30 transition-all">
+                <i data-lucide="mic" class="w-5 h-5"></i>
+                <span>Rekam Meeting</span>
+            </button>
+        </div>
+
+        <!-- Custom Toast Notification -->
+        <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-xs font-medium px-4 py-2.5 rounded-full shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50">
+            Pesan notifikasi
+        </div>
+
+        <!-- Info / Android Install Guide Modal -->
+        <div id="infoModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg text-slate-800">Cara Pakai di Android</h3>
+                    <button onclick="toggleInfoModal()" class="text-slate-400 hover:text-slate-600">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div class="space-y-3 text-xs text-slate-600 leading-relaxed">
+                    <p>1. <strong>Buka di Google Chrome Android</strong> untuk dukungan pengenalan suara (Speech-to-Text) Bahasa Indonesia terbaik.</p>
+                    <p>2. Klik ikon <strong>Titik Tiga (⋮)</strong> di pojok kanan atas Chrome, lalu pilih <strong>"Tambahkan ke Layar Utama" (Add to Home screen)</strong> untuk menjadikannya aplikasi Android mandiri.</p>
+                    <p>3. Pastikan Anda memberikan <strong>Izin Mikrofon</strong> saat diminta oleh browser.</p>
+                </div>
+                <button onclick="toggleInfoModal()" class="w-full mt-5 bg-indigo-600 text-white font-semibold py-2.5 rounded-xl text-sm">
+                    Mengerti
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // State Variables
+        let notes = JSON.parse(localStorage.getItem('memorynote_data')) || [];
+        let recognition = null;
+        let isRecording = false;
+        let isPaused = false;
+        let finalTranscript = '';
+        let lastFinalSegment = ''; // Menyimpan segmen terakhir untuk mencegah duplikasi
+        let timerInterval = null;
+        let secondsElapsed = 0;
+        let currentViewingNoteId = null;
+        let visualizerInterval = null;
+        let simulationInterval = null;
+        let isSimulating = false;
+        let restartTimeout = null;
+
+        // Helper Functions: Storage, Timer, & Audio Visualizer
+        function saveNotesToStorage() {
+            try {
+                localStorage.setItem('memorynote_data', JSON.stringify(notes));
+            } catch (e) {
+                console.warn("Gagal menyimpan ke localStorage:", e);
+            }
+        }
+
+        function formatTime(totalSeconds) {
+            const mins = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const secs = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!isPaused && isRecording) {
+                    secondsElapsed++;
+                    const timerEl = document.getElementById('timerDisplay');
+                    if (timerEl) timerEl.innerText = formatTime(secondsElapsed);
+                }
+            }, 1000);
+        }
+
+        function startVisualizer() {
+            stopVisualizer();
+            const bars = document.querySelectorAll('.wave-bar');
+            visualizerInterval = setInterval(() => {
+                if (isPaused || !isRecording) return;
+                bars.forEach(bar => {
+                    const randomHeight = Math.floor(Math.random() * 28) + 8;
+                    bar.style.height = `${randomHeight}px`;
+                });
+            }, 120);
+        }
+
+        function stopVisualizer() {
+            clearInterval(visualizerInterval);
+            const bars = document.querySelectorAll('.wave-bar');
+            bars.forEach(bar => {
+                bar.style.height = '12px';
+            });
+        }
+
+        if (notes.length === 0) {
+            notes.push({
+                id: Date.now(),
+                title: "Contoh: Rapat Peluncuran Produk",
+                date: "26 Nov 2026, 09:30",
+                duration: "02:15",
+                content: "Selamat pagi semuanya. Hari ini kita membahas jadwal peluncuran aplikasi MemoryNote versi Android. Target rilis ditetapkan pada tanggal 1 Desember. Tim desain diminta menyelesaikan aset ikon sebelum hari Jumat. Pastikan fitur rekam suara diuji coba pada berbagai perangkat Android.",
+                summary: [
+                    "Target rilis aplikasi MemoryNote ditetapkan pada tanggal 1 Desember.",
+                    "Tim desain diminta menyelesaikan aset ikon sebelum hari Jumat.",
+                    "Fitur rekam suara harus diuji coba pada berbagai perangkat Android."
+                ]
+            });
+            saveNotesToStorage();
+        }
+
+        // Initialize Speech Recognition API
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showToast("Browser Anda tidak mendukung fitur rekam suara otomatis. Gunakan Google Chrome.");
+                return null;
+            }
+
+            const recog = new SpeechRecognition();
+            recog.lang = 'id-ID'; // Bahasa Indonesia
+            recog.continuous = true;
+            recog.interimResults = true;
+            recog.maxAlternatives = 1; // Mempercepat pemrosesan tanpa delay alternatif
+
+            recog.onresult = (event) => {
+                if (isPaused || !isRecording) return;
+
+                let interimTranscript = '';
+                let newFinalChunk = '';
+
+                // Hanya proses mulai dari resultIndex terbaru agar tidak mengulang hasil lama
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcriptPiece = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        const cleanText = transcriptPiece.trim();
+                        // Cegah pengulangan teks yang identik akibat auto-restart Android Speech API
+                        if (cleanText && cleanText.toLowerCase() !== lastFinalSegment.toLowerCase()) {
+                            lastFinalSegment = cleanText;
+                            const formatted = cleanText.charAt(0).toUpperCase() + cleanText.slice(1) + '. ';
+                            newFinalChunk += formatted;
+                        }
+                    } else {
+                        interimTranscript += transcriptPiece;
+                    }
+                }
+
+                if (newFinalChunk) {
+                    finalTranscript += newFinalChunk;
+                }
+
+                // Update tampilan secara instan tanpa delay
+                updateTranscriptUI(finalTranscript, interimTranscript);
+            };
+
+            recog.onerror = (event) => {
+                console.warn("Speech recognition status:", event.error);
+                if (event.error === 'not-allowed') {
+                    showToast("Izin mikrofon ditolak. Aktifkan izin di pengaturan browser.");
+                    showFallbackSimulation("Izin mikrofon ditolak oleh browser atau perangkat.");
+                } else if (event.error === 'audio-capture') {
+                    showToast("Mikrofon tidak terdeteksi pada perangkat.");
+                    showFallbackSimulation("Mikrofon tidak ditemukan atau sedang digunakan aplikasi lain.");
+                } else if (event.error === 'no-speech' || event.error === 'aborted') {
+                    // Biarkan onend menangani restart mulus tanpa jeda
+                } else {
+                    showFallbackSimulation("Koneksi mikrofon terganggu (" + event.error + ").");
+                }
+            };
+
+            // Restart instan tanpa jeda saat engine berhenti otomatis di Android
+            recog.onend = () => {
+                if (isRecording && !isPaused && !isSimulating) {
+                    clearTimeout(restartTimeout);
+                    // Gunakan instance baru atau restart langsung dalam 10ms agar tanpa delay
+                    restartTimeout = setTimeout(() => {
+                        if (isRecording && !isPaused && !isSimulating) {
+                            try {
+                                recog.start();
+                            } catch (e) {
+                                // Jika instance lama masih terkunci, buat ulang secara instan
+                                recognition = initSpeechRecognition();
+                                if (recognition) {
+                                    try { recognition.start(); } catch (err) {}
+                                }
+                            }
+                        }
+                    }, 10);
+                }
+            };
+
+            return recog;
+        }
+
+        // Show simulation option when microphone hardware is unavailable
+        function showFallbackSimulation(reason) {
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
+            stopVisualizer();
+            const statusText = document.getElementById('micStatusText');
+            const retryBtn = document.getElementById('retryMicBtn');
+            const simBtn = document.getElementById('simulateBtn');
+            if (statusText && simBtn) {
+                statusText.innerHTML = `<span class="text-amber-600 font-medium">${reason}</span><br>Pastikan dibuka lewat <b>HTTPS</b> / Google Chrome & izinkan akses mikrofon.`;
+                if (retryBtn) retryBtn.classList.remove('hidden');
+                simBtn.classList.remove('hidden');
+            }
+        }
+
+        // Simulate live meeting speech-to-text when no mic is attached
+        function startSimulationMode() {
+            isSimulating = true;
+            document.getElementById('simulateBtn').classList.add('hidden');
+            document.getElementById('micPlaceholder').classList.add('hidden');
+            startVisualizer();
+            showToast("Mode simulasi meeting aktif");
+
+            const sampleSentences = [
+                "Halo semuanya, mari kita mulai rapat evaluasi mingguan hari ini. ",
+                "Pertama, progres pengembangan aplikasi MemoryNote sudah mencapai tahap pengujian akhir. ",
+                "Tim backend memastikan sinkronisasi penyimpanan lokal berjalan lancar tanpa kendala. ",
+                "Keputusan rapat hari ini adalah fokus pada perbaikan antarmuka mobile sebelum rilis minggu depan. ",
+                "Terima kasih atas kerja keras seluruh tim."
+            ];
+
+            let index = 0;
+            simulationInterval = setInterval(() => {
+                if (isPaused || !isRecording) return;
+                if (index < sampleSentences.length) {
+                    finalTranscript += sampleSentences[index];
+                    updateTranscriptUI(finalTranscript, "");
+                    index++;
+                } else {
+                    clearInterval(simulationInterval);
+                }
+            }, 2500);
+        }
+
+        // Start Recording Flow
+        async function startRecording() {
+            finalTranscript = '';
+            lastFinalSegment = '';
+            secondsElapsed = 0;
+            isRecording = true;
+            isPaused = false;
+            isSimulating = false;
+            clearTimeout(restartTimeout);
+            document.getElementById('meetingTitleInput').value = '';
+            document.getElementById('liveTranscriptText').innerText = '';
+            document.getElementById('interimTranscriptText').innerText = '';
+            document.getElementById('micPlaceholder').classList.remove('hidden');
+            document.getElementById('micStatusText').innerHTML = 'Meminta izin mikrofon...<br>Silakan ketuk "Izinkan" jika muncul pop-up.';
+            const retryBtn = document.getElementById('retryMicBtn');
+            if (retryBtn) retryBtn.classList.add('hidden');
+            document.getElementById('simulateBtn').classList.add('hidden');
+            document.getElementById('timerDisplay').innerText = '00:00';
+            updatePauseButtonUI();
+
+            // Show Recording View
+            document.getElementById('recordingView').classList.remove('hidden');
+            startTimer();
+
+            // 1. Cek konteks keamanan (Android Chrome wajib HTTPS atau localhost untuk akses mic)
+            if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                showFallbackSimulation("Akses mikrofon diblokir karena halaman dibuka tanpa HTTPS (file lokal).");
+                return;
+            }
+
+            // 2. Minta izin mikrofon secara eksplisit ke sistem Android via getUserMedia
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    // Langsung lepaskan stream agar perangkat mic bebas dipakai oleh SpeechRecognition
+                    stream.getTracks().forEach(track => track.stop());
+                } catch (err) {
+                    console.warn("getUserMedia error:", err);
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        showFallbackSimulation("Izin mikrofon ditolak. Buka Pengaturan Situs di Chrome Android lalu izinkan Mikrofon.");
+                    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                        showFallbackSimulation("Perangkat mikrofon tidak ditemukan.");
+                    } else {
+                        showFallbackSimulation("Mikrofon tidak dapat diakses (" + err.name + ").");
+                    }
+                    return;
+                }
+            }
+
+            document.getElementById('micStatusText').innerHTML = 'Silakan mulai berbicara...<br>Suara Anda akan otomatis diketik di sini.';
+
+            recognition = initSpeechRecognition();
+            if (!recognition) {
+                showFallbackSimulation("Browser tidak mendukung Web Speech API.");
+                return;
+            }
+
+            try {
+                recognition.start();
+                startVisualizer();
+            } catch (e) {
+                showFallbackSimulation("Gagal memulai pengenalan suara di perangkat.");
+            }
+        }
+
+        // Toggle Pause / Resume
+        function togglePauseRecording() {
+            if (!isRecording) return;
+            isPaused = !isPaused;
+            
+            if (isPaused) {
+                clearTimeout(restartTimeout);
+                if (recognition && !isSimulating) {
+                    try { recognition.stop(); } catch (e) {}
+                }
+                clearInterval(timerInterval);
+                stopVisualizer();
+                showToast("Perekaman dijeda");
+            } else {
+                lastFinalSegment = ''; // Reset deduplikasi saat lanjut bicara
+                if (recognition && !isSimulating) {
+                    try { recognition.start(); } catch (e) {}
+                }
+                startTimer();
+                startVisualizer();
+                showToast("Perekaman dilanjutkan");
+            }
+            updatePauseButtonUI();
+        }
+
+        function updatePauseButtonUI() {
+            const btn = document.getElementById('pauseBtn');
+            if (isPaused) {
+                btn.innerHTML = '<i data-lucide="play" class="w-6 h-6"></i>';
+                btn.classList.replace('bg-indigo-50', 'bg-amber-100');
+                btn.classList.replace('text-indigo-600', 'text-amber-600');
+            } else {
+                btn.innerHTML = '<i data-lucide="pause" class="w-6 h-6"></i>';
+                btn.classList.replace('bg-amber-100', 'bg-indigo-50');
+                btn.classList.replace('text-amber-600', 'text-indigo-600');
+            }
+            lucide.createIcons();
+        }
+
+        // Cancel Recording
+        function cancelRecording() {
+            isRecording = false;
+            isSimulating = false;
+            clearTimeout(restartTimeout);
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
+            clearInterval(timerInterval);
+            clearInterval(simulationInterval);
+            stopVisualizer();
+            document.getElementById('recordingView').classList.add('hidden');
+            showToast("Perekaman dibatalkan");
+        }
+
+        // Stop & Save Note
+        function stopAndSaveRecording() {
+            isRecording = false;
+            isSimulating = false;
+            clearTimeout(restartTimeout);
+            if (recognition) {
+                try { recognition.stop(); } catch (e) {}
+            }
+            clearInterval(timerInterval);
+            clearInterval(simulationInterval);
+            stopVisualizer();
+
+            // Gabungkan teks final dan teks sementara yang masih tampil agar tidak ada kata terakhir yang hilang
+            const pendingInterim = document.getElementById('interimTranscriptText').innerText.trim();
+            let combinedText = finalTranscript.trim();
+            if (pendingInterim && pendingInterim.toLowerCase() !== lastFinalSegment.toLowerCase()) {
+                const formattedInterim = pendingInterim.charAt(0).toUpperCase() + pendingInterim.slice(1) + '.';
+                combinedText = combinedText ? `${combinedText} ${formattedInterim}` : formattedInterim;
+            }
+
+            const rawContent = combinedText;
+            if (!rawContent) {
+                document.getElementById('recordingView').classList.add('hidden');
+                showToast("Tidak ada suara yang terekam untuk disimpan.");
+                return;
+            }
+
+            const titleInput = document.getElementById('meetingTitleInput').value.trim();
+            const now = new Date();
+            const defaultTitle = `Meeting ${now.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} ${now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+            
+            const newNote = {
+                id: Date.now(),
+                title: titleInput || defaultTitle,
+                date: now.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                duration: formatTime(secondsElapsed),
+                content: rawContent,
+                summary: generateAutoSummary(rawContent)
+            };
+
+            notes.unshift(newNote);
+            saveNotesToStorage();
+            renderNotesList();
+
+            document.getElementById('recordingView').classList.add('hidden');
+            showToast("Catatan meeting berhasil disimpan!");
+            openDetailView(newNote.id);
+        }
+
+        // Generate Key Bullet Points Automatically
+        function generateAutoSummary(text) {
+            const sentences = text.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 12);
+            if (sentences.length === 0) return [text];
+
+            const keywords = ['target', 'rilis', 'keputusan', 'penting', 'deadline', 'jadwal', 'harus', 'wajib', 'fokus', 'selesai', 'sepakat', 'evaluasi', 'anggaran', 'biaya', 'tim'];
+            
+            // Score sentences based on keywords and position
+            const scored = sentences.map((sentence, idx) => {
+                let score = 0;
+                const lower = sentence.toLowerCase();
+                keywords.forEach(kw => {
+                    if (lower.includes(kw)) score += 2;
+                });
+                if (idx === 0 || idx === sentences.length - 1) score += 1;
+                return { sentence, score, idx };
+            });
+
+            // Pick top 3 most relevant sentences in chronological order
+            const topSentences = scored
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 3)
+                .sort((a, b) => a.idx - b.idx)
+                .map(item => item.sentence + '.');
+
+            return topSentences;
+        }
+
+        // Update Live Transcript UI
+        function updateTranscriptUI(finalText, interimText) {
+            const placeholder = document.getElementById('micPlaceholder');
+            if (finalText || interimText) {
+                placeholder.classList.add('hidden');
+            }
+            const liveEl = document.getElementById('liveTranscriptText');
+            const interimEl = document.getElementById('interimTranscriptText');
+            
+            liveEl.textContent = finalText;
+            interimEl.textContent = interimText;
+
+            // Auto-scroll otomatis mengikuti teks real-time terbaru
+            const scrollContainer = liveEl.parentElement;
+            if (scrollContainer) {
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            }
+        }
+
+        function renderNotesList(filterQuery = '') {
+            const container = document.getElementById('notesContainer');
+            const emptyState = document.getElementById('emptyState');
+            const countBadge = document.getElementById('noteCount');
+
+            const filtered = notes.filter(note => 
+                note.title.toLowerCase().includes(filterQuery.toLowerCase()) ||
+                note.content.toLowerCase().includes(filterQuery.toLowerCase())
+            );
+
+            countBadge.innerText = `${filtered.length} Catatan`;
+            container.innerHTML = '';
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            filtered.forEach(note => {
+                const card = document.createElement('div');
+                card.onclick = () => openDetailView(note.id);
+                card.className = 'bg-white p-4 rounded-2xl border border-slate-100 shadow-xs hover:shadow-md active:scale-[0.99] transition cursor-pointer';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start gap-2">
+                        <h3 class="font-bold text-slate-800 text-sm line-clamp-1">${escapeHTML(note.title)}</h3>
+                        <span class="text-[11px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md shrink-0">${note.duration}</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">${escapeHTML(note.content)}</p>
+                    <div class="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-50 text-[11px] text-slate-400">
+                        <span class="flex items-center gap-1"><i data-lucide="calendar" class="w-3 h-3"></i> ${note.date}</span>
+                        <span class="text-indigo-600 font-medium flex items-center gap-0.5">Lihat detail <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            lucide.createIcons();
+        }
+
+        function filterNotes() {
+            const query = document.getElementById('searchInput').value;
+            renderNotesList(query);
+        }
+
+        // Detail View Functions
+        function openDetailView(noteId) {
+            const note = notes.find(n => n.id === noteId);
+            if (!note) return;
+
+            currentViewingNoteId = noteId;
+            document.getElementById('detailTitle').innerText = note.title;
+            document.getElementById('detailDate').innerHTML = `<i data-lucide="calendar" class="w-3.5 h-3.5"></i> ${note.date}`;
+            document.getElementById('detailDuration').innerHTML = `<i data-lucide="clock" class="w-3.5 h-3.5"></i> ${note.duration}`;
+            document.getElementById('detailContent').innerText = note.content;
+
+            const summaryList = document.getElementById('detailSummary');
+            summaryList.innerHTML = '';
+            (note.summary || []).forEach(point => {
+                const li = document.createElement('li');
+                li.innerText = point;
+                summaryList.appendChild(li);
+            });
+
+            document.getElementById('detailView').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeDetailView() {
+            document.getElementById('detailView').classList.add('hidden');
+            currentViewingNoteId = null;
+        }
+
+        function copyNoteContent() {
+            const note = notes.find(n => n.id === currentViewingNoteId);
+            if (!note) return;
+
+            const textToCopy = `${note.title}\nTanggal: ${note.date} (${note.duration})\n\nPoin Penting:\n${note.summary.map(s => '- ' + s).join('\n')}\n\nTranskrip Lengkap:\n${note.content}`;
+            
+            const tempTextarea = document.createElement('textarea');
+            tempTextarea.value = textToCopy;
+            document.body.appendChild(tempTextarea);
+            tempTextarea.select();
+            try {
+                document.execCommand('copy');
+                showToast("Catatan disalin ke clipboard!");
+            } catch (err) {
+                showToast("Gagal menyalin teks.");
+            }
+            document.body.removeChild(tempTextarea);
+        }
+
+        async function shareNote() {
+            const note = notes.find(n => n.id === currentViewingNoteId);
+            if (!note) return;
+
+            const shareText = `*${note.title}*\n📅 ${note.date}\n\n*Poin Penting:*\n${note.summary.map(s => '• ' + s).join('\n')}\n\n*Transkrip:*\n${note.content}`;
+
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: note.title,
+                        text: shareText
+                    });
+                } catch (err) {
+                    // User cancelled share
+                }
+            } else {
+                copyNoteContent();
+            }
+        }
+
+        function deleteCurrentNote() {
+            if (!currentViewingNoteId) return;
+            notes = notes.filter(n => n.id !== currentViewingNoteId);
+            saveNotesToStorage();
+            renderNotesList(document.getElementById('searchInput').value);
+            closeDetailView();
+            showToast("Catatan dihapus.");
+        }
+
+        // UI Modals & Toast
+        function toggleInfoModal() {
+            const modal = document.getElementById('infoModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+            }, 3000);
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, tag => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[tag]));
+        }
+
+        // Initial Render on Load
+        window.onload = function() {
+            renderNotesList();
+            lucide.createIcons();
+        };
+    </script>
+</body>
+</html>
